@@ -11,6 +11,7 @@ import net.imglib2.RandomAccess;
 import net.imglib2.exception.IncompatibleTypeException;
 import net.imglib2.img.Img;
 import net.imglib2.img.ImgFactory;
+import net.imglib2.img.array.ArrayImgFactory;
 import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.NativeType;
 import net.imglib2.type.numeric.RealType;
@@ -46,10 +47,10 @@ public class MonogenicTest
 		final Img< ComplexFloatType > kc = copyToComplex( kernel );
 
 		/*
-		 * Go!
+		 * Convolve.
 		 */
-
-		final ImgFactory< ComplexFloatType > factory = sc.factory();
+		
+		final ImgFactory< ComplexFloatType > factory = new ArrayImgFactory< ComplexFloatType >();
 		final int numThreads = 1;
 		final ComplexFourierConvolver< ComplexFloatType > convolver = new ComplexFourierConvolver< ComplexFloatType >( sc, factory, numThreads );
 
@@ -57,7 +58,6 @@ public class MonogenicTest
 		final List< Img< FloatType >> split = split( convolved );
 		ImageJFunctions.show( split.get( 0 ), "Real" );
 		ImageJFunctions.show( split.get( 1 ), "Imag" );
-
 	}
 
 	private static final List< Img< FloatType >> split( final Img< ComplexFloatType > source )
