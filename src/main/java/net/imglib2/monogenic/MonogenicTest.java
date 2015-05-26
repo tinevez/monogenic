@@ -3,7 +3,6 @@ package net.imglib2.monogenic;
 import ij.ImageJ;
 import ij.ImagePlus;
 
-import java.util.ArrayList;
 import java.util.List;
 
 import net.imglib2.Cursor;
@@ -46,6 +45,7 @@ public class MonogenicTest
 		final Img< ComplexFloatType > sc = copyToComplex( source );
 		final Img< ComplexFloatType > kc = copyToComplex( kernel );
 
+
 		/*
 		 * Convolve.
 		 */
@@ -54,43 +54,15 @@ public class MonogenicTest
 		final int numThreads = 1;
 		final ComplexFourierConvolver< ComplexFloatType > convolver = new ComplexFourierConvolver< ComplexFloatType >( sc, factory, numThreads );
 
-		final Img< ComplexFloatType > convolved = convolver.convolve( kc );
-		final List< Img< FloatType >> split = split( convolved );
-		ImageJFunctions.show( split.get( 0 ), "Real" );
-		ImageJFunctions.show( split.get( 1 ), "Imag" );
-	}
+		// Generate a suitable holder for results.
+		final Img< ComplexFloatType > target = convolver.createTarget( kc );
+		convolver.convolve( kc, target );
 
-	private static final List< Img< FloatType >> split( final Img< ComplexFloatType > source )
-	{
-		final ImgFactory< FloatType > factory;
-		try
 		{
-			factory = source.factory().imgFactory( new FloatType() );
+			final List< Img< FloatType >> split = MonogenicUtils.split( target );
+			ImageJFunctions.show( split.get( 0 ), "Real" );
+			ImageJFunctions.show( split.get( 1 ), "Imag" );
 		}
-		catch ( final IncompatibleTypeException e )
-		{
-			throw new RuntimeException( "Could not instantiate complex img factory." );
-		}
-
-		final Img< FloatType > real = factory.create( source, new FloatType() );
-		final Img< FloatType > imaginary = factory.create( source, new FloatType() );
-
-		final Cursor< ComplexFloatType > cs = source.cursor();
-		final RandomAccess< FloatType > rr = real.randomAccess( source );
-		final RandomAccess< FloatType > ri = imaginary.randomAccess( source );
-		while ( cs.hasNext() )
-		{
-			cs.fwd();
-			ri.setPosition( cs );
-			rr.setPosition( cs );
-			rr.get().setReal( cs.get().getRealFloat() );
-			ri.get().setReal( cs.get().getImaginaryFloat() );
-		}
-
-		final List< Img< FloatType >> out = new ArrayList< Img< FloatType > >( 2 );
-		out.add( real );
-		out.add( imaginary );
-		return out;
 	}
 
 	private static final < T extends RealType< T >> Img< ComplexFloatType > copyToComplex( final Img< T > source )
