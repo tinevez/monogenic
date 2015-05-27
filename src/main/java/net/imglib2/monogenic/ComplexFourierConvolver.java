@@ -1,7 +1,5 @@
 package net.imglib2.monogenic;
 
-import java.util.List;
-
 import net.imglib2.Cursor;
 import net.imglib2.Dimensions;
 import net.imglib2.FinalDimensions;
@@ -12,10 +10,8 @@ import net.imglib2.algorithm.fft2.FFT;
 import net.imglib2.algorithm.fft2.FFTMethods;
 import net.imglib2.img.Img;
 import net.imglib2.img.ImgFactory;
-import net.imglib2.img.display.imagej.ImageJFunctions;
 import net.imglib2.type.numeric.ComplexType;
 import net.imglib2.type.numeric.NumericType;
-import net.imglib2.type.numeric.real.FloatType;
 import net.imglib2.view.ExtendedRandomAccessibleInterval;
 import net.imglib2.view.IntervalView;
 import net.imglib2.view.Views;
@@ -41,29 +37,33 @@ public class ComplexFourierConvolver< T extends ComplexType< T >>
 		this.sourceFourier = forwardFFT( source );
 	}
 
-	public < R extends ComplexType< R >> void convolve( final RandomAccessibleInterval< R > kernelFourier, final Img< T > target )
+	public < R extends ComplexType< R >> void convolve( final RandomAccessibleInterval< R > kernelFourier, final Img< T > target, final boolean frequencyCentered )
 	{
-		final IntervalView< R > padded = padZero( kernelFourier );
-		multiply( padded, sourceFourier, target );
-
+		if ( frequencyCentered )
 		{
-			final List< Img< FloatType >> split = MonogenicUtils.split( target );
-			ImageJFunctions.show( split.get( 0 ), "Mult Real" );
-			ImageJFunctions.show( split.get( 1 ), "Mult Imag" );
+			/*
+			 * Rearrange quadrants: we assume that the kernel FFT was given with
+			 * the central frequency at the image center, instead of at 0,0.
+			 */
+			final IntervalView< R > padded = padZero( kernelFourier );
+			copyTo( padded, target );
+			QuadrantArranger.rearrangeFFTQuadrants( target, false, numThreads );
+		}
+		else
+		{
+			/*
+			 * Rearrange quadrants: Here we have to re-arrange kernel first to
+			 * make it frequency centered, then pad it, then re-arrange it
+			 * again. Otherwise, we would be adding false 0 frequencies every
+			 * where.
+			 */
+			QuadrantArranger.rearrangeFFTQuadrants( kernelFourier, false, numThreads );
+			final IntervalView< R > padded = padZero( kernelFourier );
+			copyTo( padded, target );
+			QuadrantArranger.rearrangeFFTQuadrants( target, false, numThreads );
 		}
 
-		/*
-		 * Rearrange quadrants: we assume that the kernel FFT was given with the
-		 * central frequency at the image center, instead of at 0,0.
-		 */
-		QuadrantArranger.rearrangeFFTQuadrants( target, false, numThreads );
-
-		{
-			final List< Img< FloatType >> split = MonogenicUtils.split( target );
-			ImageJFunctions.show( split.get( 0 ), "Rearrang Real" );
-			ImageJFunctions.show( split.get( 1 ), "Rearrang Imag" );
-		}
-
+		multiply( target, sourceFourier );
 		FFT.complexToComplexInverse( target, numThreads );
 	}
 
@@ -73,22 +73,22 @@ public class ComplexFourierConvolver< T extends ComplexType< T >>
 		return factory.create( paddingInterval, sourceFourier.firstElement() );
 	}
 
-	private final < R extends ComplexType< R >> void multiply( final RandomAccessibleInterval< R > A, final Img< T > B, final Img< T > to )
+	/**
+	 * Does <code>A = A * B</code>.
+	 * 
+	 * @param A
+	 * @param B
+	 */
+	private final void multiply( final Img< T > A, final Img< T > B )
 	{
-		final RandomAccess< R > ra = A.randomAccess( B );
-		final RandomAccess< T > rb = B.randomAccess( B );
-		final Cursor< T > cursor = to.localizingCursor();
+		final Cursor< T > ca = A.localizingCursor();
+		final RandomAccess< T > rb = B.randomAccess( A );
 
-		while ( cursor.hasNext() )
+		while ( ca.hasNext() )
 		{
-			cursor.fwd();
-			ra.setPosition( cursor );
-			rb.setPosition( cursor );
-
-			// target = A
-			cursor.get().setComplexNumber( ra.get().getRealDouble(), ra.get().getImaginaryDouble() );
-			// target = target * B
-			cursor.get().mul( rb.get() );
+			ca.fwd();
+			rb.setPosition( ca );
+			ca.get().mul( rb.get() );
 		}
 	}
 
@@ -130,5 +130,18 @@ public class ComplexFourierConvolver< T extends ComplexType< T >>
 			cursor.get().set( ra.get() );
 		}
 		return img;
+	}
+	
+	private static final < R extends ComplexType< R >, T extends ComplexType< T >> void copyTo( final IntervalView< R > source, final Img< T > dest )
+	{
+		final IntervalView< R > view = Views.offsetInterval( source, source );
+		final Cursor< R > cursor = view.localizingCursor();
+		final RandomAccess< T > ra = dest.randomAccess( source );
+		while ( cursor.hasNext() )
+		{
+			cursor.fwd();
+			ra.setPosition( cursor );
+			ra.get().setComplexNumber( cursor.get().getRealDouble(), cursor.get().getImaginaryDouble() );
+		}
 	}
 }
